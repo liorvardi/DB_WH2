@@ -85,10 +85,7 @@ def add_customer(customer: Customer) -> ReturnValue:
     except DatabaseException.UNIQUE_VIOLATION as e:
         print(e)
         return ReturnValue.ALREADY_EXISTS
-    except (DatabaseException.ConnectionInvalid,
-            DatabaseException.NOT_NULL_VIOLATION, 
-            DatabaseException.CHECK_VIOLATION,
-            DatabaseException.FOREIGN_KEY_VIOLATION)  as e: 
+    except Exception  as e: 
         print(e)
         return ReturnValue.ERROR
     finally:
@@ -110,14 +107,9 @@ def get_customer(customer_id: int) -> Customer:
             return Customer.bad_customer()
         
         return Customer(customer_id= resultSet.rows[0][0], customer_name= resultSet.rows[0][1])
-    except DatabaseException.ConnectionInvalid as e:
+    except Exception as e:
         print(e)
-    except DatabaseException.NOT_NULL_VIOLATION as e:
-        print(e)
-    except DatabaseException.CHECK_VIOLATION as e:
-        print(e)
-    except DatabaseException.UNIQUE_VIOLATION as e:
-        print(e)
+        return Customer.bad_customer()
 
 def delete_customer(customer_id: int) -> ReturnValue:
     if(customer_id is None or customer_id <= 0): return ReturnValue.BAD_PARAMS
