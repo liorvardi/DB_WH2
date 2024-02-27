@@ -3,6 +3,8 @@ from psycopg2 import sql
 from datetime import date, datetime
 
 import Utility.DBConnector as Connector
+from Utility.DBConnector import ResultSet
+
 from Utility.ReturnValue import ReturnValue
 from Utility.Exceptions import DatabaseException
 
@@ -14,8 +16,20 @@ from Business.Apartment import Apartment
 # ---------------------------------- CRUD API: ----------------------------------
 
 def create_tables():
-    # TODO: implement
-    pass
+    conn = Connector.DBConnector()
+    try:
+        # conn.execute("CREATE TABLE Owners(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        # conn.execute("CREATE TABLE Apartments(id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, name TEXT NOT NULL, location TEXT NOT NULL, price FLOAT NOT NULL, PRIMARY KEY(id), FOREIGN KEY(owner_id) REFERENCES Owners(id) ON DELETE CASCADE)")
+        conn.execute("CREATE TABLE Customers(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        # conn.execute("CREATE TABLE Reservations(customer_id INTEGER NOT NULL, apartment_id INTEGER NOT NULL, start_date DATE NOT NULL, end_date DATE NOT NULL, total_price FLOAT NOT NULL, PRIMARY KEY(customer_id, apartment_id, start_date), FOREIGN KEY(customer_id) REFERENCES Customers(id) ON DELETE CASCADE, FOREIGN KEY(apartment_id) REFERENCES Apartments(id) ON DELETE CASCADE)")
+        # conn.execute("CREATE TABLE Reviews(customer_id INTEGER NOT NULL, apartment_id INTEGER NOT NULL, review_date DATE NOT NULL, rating INTEGER NOT NULL, review_text TEXT NOT NULL, PRIMARY KEY(customer_id, apartment_id, review_date), FOREIGN KEY(customer_id) REFERENCES Customers(id) ON DELETE CASCADE, FOREIGN KEY(apartment_id) REFERENCES Apartments(id) ON DELETE CASCADE)")
+    except Exception as e:
+        print(e)
+        return ReturnValue.ERROR
+    finally:
+        conn.close()
+
+    return ReturnValue.OK
 
 
 def clear_tables():
@@ -84,13 +98,41 @@ def add_customer(customer: Customer) -> ReturnValue:
 
 
 def get_customer(customer_id: int) -> Customer:
-    # TODO: implement
-    pass
-
+    conn = Connector.DBConnector()
+    resultSet = ResultSet()
+    try:
+        query = sql.SQL("SELECT * FROM Customers WHERE id={0}").format(sql.Literal(customer_id))
+        rows_effected, resultSet = conn.execute(query)
+        if rows_effected == 0:
+            return Customer.bad_customer()
+        if rows_effected > 1:
+            print("Error: multiple customers with the same id")
+            return Customer.bad_customer()
+        
+        return Customer(customer_id= resultSet.rows[0][0], customer_name= resultSet.rows[0][1])
+    except DatabaseException.ConnectionInvalid as e:
+        print(e)
+    except DatabaseException.NOT_NULL_VIOLATION as e:
+        print(e)
+    except DatabaseException.CHECK_VIOLATION as e:
+        print(e)
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        print(e)
 
 def delete_customer(customer_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    if(customer_id is None or customer_id <= 0): return ReturnValue.BAD_PARAMS
+    conn = Connector.DBConnector()
+    try:
+        query = sql.SQL("DELETE FROM Customers WHERE id={0}").format(sql.Literal(customer_id))
+        rows_effected, _ = conn.execute(query)
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+    except Exception as e:
+        print(e)
+        return ReturnValue.ERROR
+    finally:
+        conn.close()
+    return ReturnValue.OK
 
 
 def customer_made_reservation(customer_id: int, apartment_id: int, start_date: date, end_date: date, total_price: float) -> ReturnValue:
