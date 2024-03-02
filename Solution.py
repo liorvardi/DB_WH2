@@ -323,7 +323,7 @@ def customer_made_reservation(customer_id: int, apartment_id: int, start_date: d
         query = sql.SQL("""
                         INSERT INTO Reservations(
                             customer_id, apartment_id, start_date, end_date, total_price) 
-                            VALUES({cid}, {aid}, {sd}, {ed}, {tp})
+                            SELECT {cid}, {aid}, {sd}, {ed}, {tp}
                             WHERE NOT EXISTS (
                                 SELECT * FROM Reservations 
                                 WHERE apartment_id = {aid} AND (
@@ -652,18 +652,19 @@ def get_all_location_owners() -> List[Owner]:
 
 
 def best_value_for_money() -> Apartment:
-    avgPricePerNight = "AVG(Reservations.total_price / DATEDIFF(day, Resevations.end_date, Reservations.start_date))"
     conn = Connector.DBConnector()
     resultSet = ResultSet()
     try:
         query = sql.SQL("""
-            SELECT Apartments.id, Apartments.address, Apartments.city, Apartments.country, Apartments.size
+            SELECT ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
             FROM ApartmentsAndReviews
-            JOIN Reservations ON Apartments.id = Reservations.apartment_id
-            GROUP BY Apartments.id, Apartments.address, Apartments.city, Apartments.country, Apartments.size
-            ORDER BY AVG(Reviews.rating) / {avgPricePerNight}  ASC
+            JOIN Reservations ON ApartmentsAndReviews.id = Reservations.apartment_id
+            GROUP BY ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
+            ORDER BY AVG(ApartmentsAndReviews.rating) / 
+            AVG(Reservations.total_price / DATEDIFF(d, Reservations.end_date, Reservations.start_date))
+            ASC
             LIMIT 1
-        """).format(avgPricePerNight=sql.Literal(avgPricePerNight))
+        """)
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return Apartment.bad_apartment()
         return Apartment(id= resultSet.rows[0][0], address= resultSet.rows[0][1], city= resultSet.rows[0][2], country= resultSet.rows[0][3], size= resultSet.rows[0][4])
