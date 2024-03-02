@@ -19,19 +19,19 @@ def create_tables():
     
     queries = [
         """
-        CREATE TABLE Owners(
+        CREATE TABLE IF NOT EXISTS Owners(
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL
         )
         """,            
         """
-        CREATE TABLE Customers(
+        CREATE TABLE IF NOT EXISTS Customers(
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL
         )
         """,
         """
-        CREATE TABLE Apartments(
+        CREATE TABLE IF NOT EXISTS Apartments(
             id INTEGER PRIMARY KEY,
             address TEXT NOT NULL,
             city TEXT NOT NULL,
@@ -42,7 +42,7 @@ def create_tables():
         )
         """,
         """
-        CREATE TABLE Reservations(
+        CREATE TABLE IF NOT EXISTS Reservations(
             customer_id INTEGER NOT NULL,
             apartment_id INTEGER NOT NULL,
             start_date DATE NOT NULL,
@@ -56,7 +56,7 @@ def create_tables():
         )
         """,
         """
-        CREATE TABLE OwnsApartment(
+        CREATE TABLE IF NOT EXISTS OwnsApartment(
             owner_id INTEGER NOT NULL,
             apartment_id INTEGER NOT NULL,
             PRIMARY KEY(apartment_id),
@@ -65,7 +65,7 @@ def create_tables():
         )
         """,
         """
-        CREATE TABLE Reviews(
+        CREATE TABLE IF NOT EXISTS Reviews(
             customer_id INTEGER NOT NULL,
             apartment_id INTEGER NOT NULL,
             review_date DATE NOT NULL,
@@ -76,7 +76,7 @@ def create_tables():
             FOREIGN KEY(apartment_id) REFERENCES Apartments(id) ON DELETE CASCADE,
             check(rating >= 1 and rating <= 10)
         )
-        """
+        """,
         """
         CREATE VIEW ApartmentRating AS
         SELECT apartment_id, AVG(rating) AS rating
@@ -131,6 +131,9 @@ def drop_tables():
         conn.execute("DROP TABLE IF EXISTS Reservations CASCADE")
         conn.execute("DROP TABLE IF EXISTS OwnsApartment CASCADE")
         conn.execute("DROP TABLE IF EXISTS Reviews CASCADE")
+        conn.execute("DROP VIEW IF EXISTS ApartmentRating CASCADE")
+        conn.execute("DROP VIEW IF EXISTS OwnerRating CASCADE")
+        
     except Exception as e:
         print(e)
         conn.rollback()
