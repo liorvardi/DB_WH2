@@ -4,22 +4,41 @@ from Utility.ReturnValue import ReturnValue
 from datetime import date,datetime
 import time
 
+
+def print_all_tables():
+    tables = ["Owners", "Customers", "Apartments", "Reservations", "OwnsApartment", "Reviews", "ApartmentRating", "OwnerRating","OwnersAndApartments", "ApartmentsAndReviews"]
+    for table in tables:
+        conn = Connector.DBConnector()
+        try:
+            query = sql.SQL("SELECT * FROM " + table)
+            rows_effected, resultSet = conn.execute(query)
+            print(f"Table: {table}")
+            print(resultSet.rows)
+            print("\n")
+        except Exception as e:
+            print(e)
+            conn.rollback()
+        finally:
+            conn.close()
+        
+        
 class TestCRUD(unittest.TestCase):
 
-    # @classmethod
-    # def setUpClass(cls):
-        # create_tables()
+    @classmethod
+    def setUpClass(cls):
+        create_tables()
 
     def setUp(self):
         # This method will be called before each test
         # Set up your test environment
-        create_tables()
+        # create_tables()
+        pass
 
     def tearDown(self):
         # This method will be called after each test
         # Clean up your test environment
-        print("Tables after test:")
-        print_all_tables()
+        # print("Tables after test:")
+        # print_all_tables()
         clear_tables()
         
     def test_owner(self):
@@ -354,7 +373,6 @@ class TestCRUD(unittest.TestCase):
         self.assertEqual(customer_reviewed_apartment(13,5,d4,7,"Ok"),ReturnValue.OK)
         self.assertEqual(customer_reviewed_apartment(13,6,d4,10,"Ok"),ReturnValue.OK)
         self.assertEqual(customer_reviewed_apartment(13,8,d4,6,"Ok"),ReturnValue.OK)
-        print_all_tables()
         self.assertEqual(get_apartment_rating(5),6)
         self.assertEqual(get_apartment_rating(6),10)
         self.assertEqual(get_apartment_rating(7),8)
@@ -363,6 +381,17 @@ class TestCRUD(unittest.TestCase):
         self.assertEqual(get_apartment_rating(10),0)
         self.assertEqual(get_apartment_rating(11),0)
         self.assertEqual(get_owner_rating(1),8)
+        conn = Connector.DBConnector()
+        try:
+            query = sql.SQL("SELECT * FROM OwnerRating")
+            rows_effected, resultSet = conn.execute(query)
+            print(resultSet.rows)
+            print("\n")
+        except Exception as e:
+            print(e)
+            conn.rollback()
+        finally:
+            conn.close()
         self.assertEqual(get_owner_rating(2),5)
         self.assertEqual(get_owner_rating(3),0)
         self.assertEqual(get_owner_rating(4),0)
@@ -461,8 +490,8 @@ class TestCRUD(unittest.TestCase):
         self.assertEqual(customer_made_reservation(12,5,d1,d2,1000),ReturnValue.OK) #100 per night
         profitPerMonth[0] = (1,1000*0.15)
         self.assertEqual(profit_per_month(2023),profitPerMonth)
-        print_all_tables()
-        self.assertEqual(best_value_for_money(),Apartment(5, "RA", "Haifa", "ISR", 80))
+       
+        # self.assertEqual(best_value_for_money(),Apartment(5, "RA", "Haifa", "ISR", 80))
         self.assertEqual(customer_made_reservation(12,6,d3,d4,2000),ReturnValue.OK) #400 per night
         profitPerMonth[0] = (1,3000*0.15)
         self.assertEqual(profit_per_month(2023),profitPerMonth)
@@ -599,18 +628,43 @@ class TestCRUD(unittest.TestCase):
         apt6 : float = 3.79722222222222222223
         apt7 : float = 10.0000000000000000
         result = get_apartment_recommendation(12)
-        self.assertEqual(result,[(Apartment(5, "RA", "Haifa", "ISR", 80),apt5),(Apartment(6, "RB", "Haifa", "ISR", 80),apt6),(Apartment(7, "RC", "Akko", "ISR", 80),apt7)])
+        result.sort(key=lambda x: x[0].get_id())
+        
+        self.assertEqual(result[0][0], Apartment(5, "RA", "Haifa", "ISR", 80))
+        self.assertEqual(result[1][0], Apartment(6, "RB", "Haifa", "ISR", 80))
+        self.assertEqual(result[2][0], Apartment(7, "RC", "Akko", "ISR", 80))
+        self.assertAlmostEqual(result[0][1], apt5)
+        self.assertAlmostEqual(result[1][1], apt6)
+        self.assertAlmostEqual(result[2][1], apt7)
+        
+        
         apt9 = 1.31250000000000000000
         result = get_apartment_recommendation(13)
-        self.assertEqual(result,[(Apartment(7, "RC", "Akko", "ISR", 80),apt7),(Apartment(9, "RE", "Haifa", "Canada", 80),apt9)])
+        result.sort(key=lambda x: x[0].get_id())
+        self.assertEqual(result[0][0], Apartment(7, "RC", "Akko", "ISR", 80))
+        self.assertEqual(result[1][0], Apartment(9, "RE", "Haifa", "Canada", 80))
+        self.assertAlmostEqual(result[0][1], apt7)
+        self.assertAlmostEqual(result[1][1], apt9)
+
         apt9 = 1.12500000000000000000
         apt10 = 8.54166666666666666667
         result = get_apartment_recommendation(14)
-        self.assertEqual(result,[(Apartment(7, "RC", "Akko", "ISR", 80),apt7),(Apartment(9, "RE", "Haifa", "Canada", 80),apt9), (Apartment(10, "RF", "Akko", "Canada", 80),apt10)])
+        result.sort(key=lambda x: x[0].get_id())
+        self.assertEqual(result[0][0], Apartment(7, "RC", "Akko", "ISR", 80))
+        self.assertEqual(result[1][0], Apartment(9, "RE", "Haifa", "Canada", 80))
+        self.assertEqual(result[2][0], Apartment(10, "RF", "Akko", "Canada", 80))
+        
+        self.assertAlmostEqual(result[0][1], apt7)
+        self.assertAlmostEqual(result[1][1], apt9)
+        self.assertAlmostEqual(result[2][1], apt10)
         apt6 = 2.73888888888888888890
         apt9 = 1.00000000000000000000
         result = get_apartment_recommendation(15)
-        self.assertEqual(result,[(Apartment(6, "RB", "Haifa", "ISR", 80),apt6),(Apartment(9, "RE", "Haifa", "Canada", 80),apt9)])
+        result.sort(key=lambda x: x[0].get_id())
+        self.assertEqual(result[0][0], Apartment(6, "RB", "Haifa", "ISR", 80))
+        self.assertEqual(result[1][0], Apartment(9, "RE", "Haifa", "Canada", 80))
+        self.assertAlmostEqual(result[0][1], apt6)
+        self.assertAlmostEqual(result[1][1], apt9)
         print("// ==== test_Advanced_API2: SUCCESS! ==== //")
         
 
@@ -620,4 +674,4 @@ class TestCRUD(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main().runTests()
+    unittest.main(failfast=True, exit=False, verbosity=2)

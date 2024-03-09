@@ -86,8 +86,8 @@ def create_tables():
         """,       
         """
         CREATE OR REPLACE VIEW OwnerRating AS
-        SELECT owner_id, AVG(ApartmentRating.rating) AS rating
-        FROM ApartmentRating JOIN OwnsApartment ON ApartmentRating.apartment_id = OwnsApartment.apartment_id
+        SELECT owner_id, AVG(COALESCE(ApartmentRating.rating, 0)) AS rating
+        FROM ApartmentRating RIGHT JOIN OwnsApartment ON ApartmentRating.apartment_id = OwnsApartment.apartment_id
         WHERE OwnsApartment.owner_id = owner_id
         GROUP BY owner_id
         """, 
@@ -96,7 +96,7 @@ def create_tables():
         SELECT Owners.id as oId, Owners.name as oName, Apartments.id as aId, Apartments.address, Apartments.city, Apartments.country, Apartments.size 
         FROM Owners
         LEFT JOIN OwnsApartment ON Owners.id = OwnsApartment.owner_id 
-        FULL JOIN Apartments ON OwnsApartment.apartment_id = Apartments.id
+        LEFT JOIN Apartments ON OwnsApartment.apartment_id = Apartments.id
         """,
         """
         CREATE OR REPLACE VIEW ApartmentsAndReviews AS
@@ -220,7 +220,6 @@ def delete_owner(owner_id: int) -> ReturnValue:
     return delete_generic(owner_id, "Owners")
 
 def add_apartment(apartment: Apartment) -> ReturnValue:
-    if(apartment.get_id() is None or apartment.get_id() <= 0): return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("INSERT INTO Apartments(id, address, city, country, size) VALUES({id}, {addr}, {city}, {country}, {size})").format(
@@ -234,6 +233,9 @@ def add_apartment(apartment: Apartment) -> ReturnValue:
     except DatabaseException.UNIQUE_VIOLATION as e:
         print(e)
         return ReturnValue.ALREADY_EXISTS
+    except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION) as e:
+        print(e)
+        return ReturnValue.BAD_PARAMS
     except Exception  as e:
         print(e)
         conn.rollback()
@@ -333,8 +335,8 @@ def customer_made_reservation(customer_id: int, apartment_id: int, start_date: d
                             WHERE NOT EXISTS (
                                 SELECT * FROM Reservations 
                                 WHERE apartment_id = {aid} AND (
-                                    {sd} BETWEEN start_date AND end_date OR
-                                    {ed} BETWEEN start_date AND end_date OR
+                                    {sd} > start_date AND {sd} <  end_date OR
+                                    {ed} > start_date AND {ed} < end_date OR
                                     (start_date  > {sd} AND end_date < {ed})
                                 )
                             )
@@ -389,6 +391,8 @@ def customer_cancelled_reservation(customer_id: int, apartment_id: int, start_da
 
 def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date: date, rating: int,
                                 review_text: str) -> ReturnValue:
+    if(customer_id is None or customer_id <= 0 or apartment_id is None or apartment_id <= 0 or review_date is None or rating is None or rating < 1 or rating > 10 or review_text is None or len(review_text) == 0):
+        return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         queryStr = """
@@ -396,7 +400,7 @@ def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date
                 SELECT {cid}, {aid}, {rd}, {r}, {rt}
                 WHERE EXISTS (
                     SELECT * FROM Reservations 
-                    WHERE end_date < {rd} AND customer_id = {cid} AND apartment_id = {aid}                )
+                    WHERE end_date <= {rd} AND customer_id = {cid} AND apartment_id = {aid}                )
             );
         """
         query = sql.SQL(queryStr).format(
@@ -430,10 +434,12 @@ def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date
 
 def customer_updated_review(customer_id: int, apartment_id: int, update_date: date, new_rating: int,
                             new_text: str) -> ReturnValue:
+    if(customer_id is None or customer_id <= 0 or apartment_id is None or apartment_id <= 0 or update_date is None or new_rating is None or new_rating < 1 or new_rating > 10 or new_text is None or len(new_text) == 0):
+        return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         query = sql.SQL(
-            "UPDATE Reviews SET review_date={ud}, rating={nr}, review_text={nt} WHERE customer_id={cid} AND apartment_id={aid} AND review_date < {ud}").format(
+            "UPDATE Reviews SET review_date={ud}, rating={nr}, review_text={nt} WHERE customer_id={cid} AND apartment_id={aid} AND review_date <= {ud}").format(
             ud=sql.Literal(update_date),
             nr=sql.Literal(new_rating),
             nt=sql.Literal(new_text),
@@ -686,8 +692,8 @@ def best_value_for_money() -> Apartment:
             JOIN Reservations ON ApartmentsAndReviews.id = Reservations.apartment_id
             GROUP BY ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
             ORDER BY AVG(ApartmentsAndReviews.rating) / 
-            AVG(Reservations.total_price / (EXTRACT (DAY FROM (Reservations.end_date)) -EXTRACT(DAY FROM Reservations.start_date::timestamp)))
-            ASC
+            AVG(Reservations.total_price / (Reservations.end_date - Reservations.start_date))
+            DESC
             LIMIT 1
         """)
         rows_effected, resultSet = conn.execute(query)
@@ -740,7 +746,7 @@ def get_apartment_recommendation(customer_id: int) -> List[Tuple[Apartment, floa
     try:
         query = sql.SQL("""
             WITH ReviewTuples AS (
-                SELECT ApartmentsAndReviews.id as ThisCustId, ApartmentsAndReviews.rating as ThisCustRating, 
+                SELECT ApartmentsAndReviews.customer_id as ThisCustId, ApartmentsAndReviews.rating as ThisCustRating, 
                        Reviews.customer_id as OtherCustId, Reviews.rating as OtherCustRating,
                        ApartmentsAndReviews.id as AppId
                 FROM ApartmentsAndReviews
@@ -749,12 +755,14 @@ def get_apartment_recommendation(customer_id: int) -> List[Tuple[Apartment, floa
                 ),
                 
             Mitam as (
-                SELECT ReviewTuples.OtherCustId, AVG(ReviewTuples.OtherCustRating / ReviewTuples.ThisCustRating) as avgRating
+                SELECT ReviewTuples.OtherCustId,  AVG(ReviewTuples.ThisCustRating::real / ReviewTuples.OtherCustRating) as avgRating
                 FROM ReviewTuples
-                GROUP BY ReviewTuples.OtherCustId 
+                GROUP BY ReviewTuples.OtherCustId
             )
             
-            SELECT ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size, AVG(Mitam.avgRating)
+            SELECT ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, 
+                ApartmentsAndReviews.country, ApartmentsAndReviews.size, 
+                AVG(GREATEST(1, LEAST(10, Mitam.avgRating * ApartmentsAndReviews.rating))) as finalRating
             FROM  ApartmentsAndReviews
             JOIN Mitam ON ApartmentsAndReviews.customer_id = Mitam.OtherCustId
             WHERE NOT EXISTS (
@@ -763,6 +771,7 @@ def get_apartment_recommendation(customer_id: int) -> List[Tuple[Apartment, floa
             )
             GROUP BY ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
         """).format(cid=sql.Literal(customer_id))
+        
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return []
         apartments = []
