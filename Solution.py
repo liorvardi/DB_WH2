@@ -11,6 +11,8 @@ from Utility.Exceptions import DatabaseException
 from Business.Owner import Owner
 from Business.Customer import Customer
 from Business.Apartment import Apartment
+from datetime import date, datetime
+from psycopg2 import sql
 
 
 # ---------------------------------- CRUD API: ----------------------------------
@@ -93,8 +95,8 @@ def create_tables():
         CREATE OR REPLACE VIEW OwnersAndApartments AS
         SELECT Owners.id as oId, Owners.name as oName, Apartments.id as aId, Apartments.address, Apartments.city, Apartments.country, Apartments.size 
         FROM Owners
-        JOIN OwnsApartment ON Owners.id = OwnsApartment.owner_id 
-        JOIN Apartments ON OwnsApartment.apartment_id = Apartments.id
+        LEFT JOIN OwnsApartment ON Owners.id = OwnsApartment.owner_id 
+        FULL JOIN Apartments ON OwnsApartment.apartment_id = Apartments.id
         """,
         """
         CREATE OR REPLACE VIEW ApartmentsAndReviews AS
@@ -245,18 +247,18 @@ def get_apartment(apartment_id: int) -> Apartment:
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("SELECT * FROM Apartments WHERE id={0}").format(sql.Literal(apartment_id))
-        rows_effected, resultSet = conn.execute(query)
-        if rows_effected == 0:
+        rows_affected, result_set = conn.execute(query)
+        if rows_affected == 0:
             return Apartment.bad_apartment()
-        if rows_effected > 1:
-            print("Error: multiple customers with the same id")
+        if rows_affected > 1:
+            print("Error: multiple apartments with the same id")
             return Apartment.bad_apartment()
-        
-        return Apartment(id= resultSet.rows[0][0],
-                         address= resultSet.rows[0][1], 
-                         city= resultSet.rows[0][2], 
-                         country= resultSet.rows[0][3], 
-                         size= resultSet.rows[0][4])
+
+        return Apartment(id=result_set.rows[0][0],
+                            address=result_set.rows[0][1],
+                            city=result_set.rows[0][2],
+                            country=result_set.rows[0][3],
+                            size=result_set.rows[0][4])
     except Exception as e:
         print(e)
         conn.rollback()
@@ -270,23 +272,25 @@ def delete_apartment(apartment_id: int) -> ReturnValue:
 
 
 def add_customer(customer: Customer) -> ReturnValue:
-    if(customer.get_customer_id() is None or customer.get_customer_id() <= 0): return ReturnValue.BAD_PARAMS
-    if(customer.get_customer_name() is None): return ReturnValue.BAD_PARAMS
+    if customer.get_customer_id() is None or customer.get_customer_id() <= 0:
+        return ReturnValue.BAD_PARAMS
+    if customer.get_customer_name() is None:
+        return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("INSERT INTO Customers(id, name) VALUES({id}, {name})").format(
             id=sql.Literal(customer.get_customer_id()),
             name=sql.Literal(customer.get_customer_name())
         )
-        rows_effected, _ = conn.execute(query)
+        rows_affected, _ = conn.execute(query)
     except DatabaseException.UNIQUE_VIOLATION as e:
         print(e)
         return ReturnValue.ALREADY_EXISTS
-    except Exception  as e: 
+    except Exception as e:
         print(e)
         conn.rollback()
         return ReturnValue.ERROR
-    
+
     finally:
         conn.close()
 
@@ -297,26 +301,28 @@ def get_customer(customer_id: int) -> Customer:
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("SELECT * FROM Customers WHERE id={0}").format(sql.Literal(customer_id))
-        rows_effected, resultSet = conn.execute(query)
-        if rows_effected == 0:
+        rows_affected, result_set = conn.execute(query)
+        if rows_affected == 0:
             return Customer.bad_customer()
-        if rows_effected > 1:
+        if rows_affected > 1:
             print("Error: multiple customers with the same id")
             return Customer.bad_customer()
-        
-        return Customer(customer_id= resultSet.rows[0][0], customer_name= resultSet.rows[0][1])
+
+        return Customer(customer_id=result_set.rows[0][0], customer_name=result_set.rows[0][1])
     except Exception as e:
         print(e)
         conn.rollback()
         return Customer.bad_customer()
     finally:
-        conn.close()        
+        conn.close()
+
 
 def delete_customer(customer_id: int) -> ReturnValue:
     return delete_generic(customer_id, "Customers")
 
 
-def customer_made_reservation(customer_id: int, apartment_id: int, start_date: date, end_date: date, total_price: float) -> ReturnValue:
+def customer_made_reservation(customer_id: int, apartment_id: int, start_date: date, end_date: date,
+                                total_price: float) -> ReturnValue:
 
     conn = Connector.DBConnector()
     try:
@@ -333,13 +339,13 @@ def customer_made_reservation(customer_id: int, apartment_id: int, start_date: d
                                 )
                             )
                         """).format(cid=sql.Literal(customer_id),
-                        aid=sql.Literal(apartment_id),
-                        sd=sql.Literal(start_date),
-                        ed=sql.Literal(end_date),
-                        tp=sql.Literal(total_price)
-        )
-        rows_effected, _ = conn.execute(query)
-        if(rows_effected == 0):
+                                    aid=sql.Literal(apartment_id),
+                                    sd=sql.Literal(start_date),
+                                    ed=sql.Literal(end_date),
+                                    tp=sql.Literal(total_price)
+                                    )
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
             return ReturnValue.BAD_PARAMS
     except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION) as e:
         print(e)
@@ -350,18 +356,18 @@ def customer_made_reservation(customer_id: int, apartment_id: int, start_date: d
     except DatabaseException.UNIQUE_VIOLATION as e:
         print("Reservation already exists, shouldn't be possible")
         return ReturnValue.ALREADY_EXISTS
-    except Exception  as e:
+    except Exception as e:
         print(e)
         conn.rollback()
         return ReturnValue.ERROR
     finally:
         conn.close()
     return ReturnValue.OK
-        
 
 
 def customer_cancelled_reservation(customer_id: int, apartment_id: int, start_date: date) -> ReturnValue:
-    if(customer_id is None or customer_id <= 0 or apartment_id is None or apartment_id <= 0 or start_date is None): return ReturnValue.BAD_PARAMS
+    if customer_id is None or customer_id <= 0 or apartment_id is None or apartment_id <= 0 or start_date is None:
+        return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("DELETE FROM Reservations WHERE customer_id={cid} AND apartment_id={aid} AND start_date={sd}").format(
@@ -369,8 +375,8 @@ def customer_cancelled_reservation(customer_id: int, apartment_id: int, start_da
             aid=sql.Literal(apartment_id),
             sd=sql.Literal(start_date)
         )
-        rows_effected, _ = conn.execute(query)
-        if(rows_effected == 0):
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
             return ReturnValue.NOT_EXISTS
     except Exception as e:
         print(e)
@@ -381,7 +387,8 @@ def customer_cancelled_reservation(customer_id: int, apartment_id: int, start_da
     return ReturnValue.OK
 
 
-def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date: date, rating: int, review_text: str) -> ReturnValue:
+def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date: date, rating: int,
+                                review_text: str) -> ReturnValue:
     conn = Connector.DBConnector()
     try:
         queryStr = """
@@ -399,10 +406,10 @@ def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date
             r=sql.Literal(rating),
             rt=sql.Literal(review_text)
         )
-        rows_effected, _ = conn.execute(query)
-        if(rows_effected == 0):
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
             return ReturnValue.NOT_EXISTS
-        
+
     except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION) as e:
         print(e)
         return ReturnValue.BAD_PARAMS
@@ -412,27 +419,29 @@ def customer_reviewed_apartment(customer_id: int, apartment_id: int, review_date
     except DatabaseException.UNIQUE_VIOLATION as e:
         print(e)
         return ReturnValue.ALREADY_EXISTS
-    except Exception  as e:
+    except Exception as e:
         print(e)
         conn.rollback()
         return ReturnValue.ERROR
     finally:
         conn.close()
     return ReturnValue.OK
-        
 
-def customer_updated_review(customer_id: int, apartment_id: int, update_date: date, new_rating: int, new_text: str) -> ReturnValue:
+
+def customer_updated_review(customer_id: int, apartment_id: int, update_date: date, new_rating: int,
+                            new_text: str) -> ReturnValue:
     conn = Connector.DBConnector()
     try:
-        query = sql.SQL("UPDATE Reviews SET review_date={ud}, rating={nr}, review_text={nt} WHERE customer_id={cid} AND apartment_id={aid} AND review_date < {ud}").format(
+        query = sql.SQL(
+            "UPDATE Reviews SET review_date={ud}, rating={nr}, review_text={nt} WHERE customer_id={cid} AND apartment_id={aid} AND review_date < {ud}").format(
             ud=sql.Literal(update_date),
             nr=sql.Literal(new_rating),
             nt=sql.Literal(new_text),
             cid=sql.Literal(customer_id),
             aid=sql.Literal(apartment_id)
         )
-        rows_effected, res = conn.execute(query)
-        if(rows_effected == 0):
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
             return ReturnValue.NOT_EXISTS
 
     except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION) as e:
@@ -441,14 +450,14 @@ def customer_updated_review(customer_id: int, apartment_id: int, update_date: da
     except DatabaseException.FOREIGN_KEY_VIOLATION as e:
         print(e)
         return ReturnValue.NOT_EXISTS
-    except Exception  as e:
+    except Exception as e:
         print(e)
         conn.rollback()
         return ReturnValue.ERROR
     finally:
         conn.close()
     return ReturnValue.OK
-        
+
 
 def owner_owns_apartment(owner_id: int, apartment_id: int) -> ReturnValue:
     conn = Connector.DBConnector()
@@ -457,8 +466,8 @@ def owner_owns_apartment(owner_id: int, apartment_id: int) -> ReturnValue:
             oid=sql.Literal(owner_id),
             aid=sql.Literal(apartment_id)
         )
-        rows_effected, _ = conn.execute(query)
-    
+        rows_affected, _ = conn.execute(query)
+
     except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION) as e:
         print(e)
         return ReturnValue.BAD_PARAMS
@@ -468,26 +477,27 @@ def owner_owns_apartment(owner_id: int, apartment_id: int) -> ReturnValue:
     except DatabaseException.UNIQUE_VIOLATION as e:
         print(e)
         return ReturnValue.ALREADY_EXISTS
-    except Exception  as e:
+    except Exception as e:
         print(e)
         conn.rollback()
         return ReturnValue.ERROR
     finally:
         conn.close()
-    
+
     return ReturnValue.OK
 
 
 def owner_drops_apartment(owner_id: int, apartment_id: int) -> ReturnValue:
-    if(owner_id is None or owner_id <= 0 or apartment_id is None or apartment_id <= 0): return ReturnValue.BAD_PARAMS
+    if owner_id is None or owner_id <= 0 or apartment_id is None or apartment_id <= 0:
+        return ReturnValue.BAD_PARAMS
     conn = Connector.DBConnector()
     try:
         query = sql.SQL("DELETE FROM OwnsApartment WHERE owner_id={oid} AND apartment_id={aid}").format(
             oid=sql.Literal(owner_id),
             aid=sql.Literal(apartment_id)
         )
-        rows_effected, _ = conn.execute(query)
-        if(rows_effected == 0):
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
             return ReturnValue.NOT_EXISTS
     except Exception as e:
         print(e)
@@ -605,10 +615,10 @@ def reservations_per_owner() -> List[Tuple[str, int]]:
     resultSet = ResultSet()
     try:
         query = sql.SQL("""
-            SELECT Owners.name as owner_name, COUNT(*) as total_reservation_count
+            SELECT oName as owner_name, COUNT(Reservations.apartment_id) as total_reservation_count
             FROM OwnersAndApartments
-            JOIN Reservations ON Apartments.id = Reservations.apartment_id 
-            GROUP BY Owners.id, Owners.name
+            LEFT JOIN Reservations ON aId = Reservations.apartment_id 
+            GROUP BY oId, oName
         """)
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return []
@@ -632,10 +642,10 @@ def get_all_location_owners() -> List[Owner]:
     resultSet = ResultSet()
     try:
         query = sql.SQL("""
-            SELECT Owners.id, Owners.name
+            SELECT oId, oName
             FROM OwnersAndApartments
-            GROUP BY Owners.id, Owners.name
-            WHERE COUNT (DISTINCT Apartments.city) = (SELECT COUNT(DISTINCT Apartments.city) FROM Apartments)
+            GROUP BY oId, oName
+            HAVING COUNT (DISTINCT (city, country)) = (SELECT COUNT(DISTINCT (Apartments.city, Apartments.country)) FROM Apartments)
         """)
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return []
@@ -650,7 +660,22 @@ def get_all_location_owners() -> List[Owner]:
     finally:
         conn.close()
 
-
+def print_all_tables():
+    tables = ["Owners", "Customers", "Apartments", "Reservations", "OwnsApartment", "Reviews"]
+    for table in tables:
+        conn = Connector.DBConnector()
+        try:
+            query = sql.SQL("SELECT * FROM " + table)
+            rows_effected, resultSet = conn.execute(query)
+            print(f"Table: {table}")
+            print(resultSet.rows)
+            print("\n")
+        except Exception as e:
+            print(e)
+            conn.rollback()
+        finally:
+            conn.close()
+        
 def best_value_for_money() -> Apartment:
     conn = Connector.DBConnector()
     resultSet = ResultSet()
@@ -661,7 +686,7 @@ def best_value_for_money() -> Apartment:
             JOIN Reservations ON ApartmentsAndReviews.id = Reservations.apartment_id
             GROUP BY ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
             ORDER BY AVG(ApartmentsAndReviews.rating) / 
-            AVG(Reservations.total_price / DATEDIFF(d, Reservations.end_date, Reservations.start_date))
+            AVG(Reservations.total_price / (EXTRACT (DAY FROM (Reservations.end_date)) -EXTRACT(DAY FROM Reservations.start_date::timestamp)))
             ASC
             LIMIT 1
         """)
@@ -680,19 +705,20 @@ def profit_per_month(year: int) -> List[Tuple[int, float]]:
     conn = Connector.DBConnector()
     resultSet = ResultSet()
     try:
-        allMonth = "DECLARE @allMonth TABLE (month INT);"
-        allMonth += "INSERT INTO @allMonth VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);"
+        allMonth = "CREATE TEMP TABLE allMonth (month INT);"
+        allMonth += "INSERT INTO allMonth VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12);"
         conn.execute(allMonth)
         
         query = sql.SQL("""
-            SELECT @allMonth.month, IFNULL(total_profit, 0) FROM @allMonth 
+            SELECT allMonth.month, COALESCE(total_profit, 0) FROM allMonth 
             LEFT JOIN (
                 SELECT EXTRACT(MONTH FROM end_date) as month, SUM(total_price) * 0.15 as total_profit
                 FROM Reservations
                 WHERE EXTRACT(YEAR FROM end_date) = {year}
                 GROUP BY EXTRACT(MONTH FROM end_date)
                 ORDER BY EXTRACT(MONTH FROM end_date) ASC
-            )
+            ) AS subquery
+            ON allMonth.month = subquery.month
         """).format(year=sql.Literal(year))
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return []
@@ -715,27 +741,27 @@ def get_apartment_recommendation(customer_id: int) -> List[Tuple[Apartment, floa
         query = sql.SQL("""
             WITH ReviewTuples AS (
                 SELECT ApartmentsAndReviews.id as ThisCustId, ApartmentsAndReviews.rating as ThisCustRating, 
-                       Reviews.id as OtherCustId, Reviews.rating as OtherCustRating,
-                       Appartments.id as AppId
+                       Reviews.customer_id as OtherCustId, Reviews.rating as OtherCustRating,
+                       ApartmentsAndReviews.id as AppId
                 FROM ApartmentsAndReviews
                 JOIN Reviews ON ApartmentsAndReviews.id = Reviews.apartment_id
                 WHERE ApartmentsAndReviews.customer_id = {cid} AND Reviews.customer_id <> {cid}
-                )
+                ),
                 
-            WITH Mitam as (
-                SELECT ReviewTuples.OtherCustId, AVG(ReviewTuples.OtherCustRating / ReviewTuples.ThisCustRating) 
+            Mitam as (
+                SELECT ReviewTuples.OtherCustId, AVG(ReviewTuples.OtherCustRating / ReviewTuples.ThisCustRating) as avgRating
                 FROM ReviewTuples
                 GROUP BY ReviewTuples.OtherCustId 
             )
             
-            SELECT Apartments.id, Apartments.address, Apartments.city, Apartments.country, Apartments.size, AVG(Mitam.rating)
+            SELECT ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size, AVG(Mitam.avgRating)
             FROM  ApartmentsAndReviews
             JOIN Mitam ON ApartmentsAndReviews.customer_id = Mitam.OtherCustId
             WHERE NOT EXISTS (
                 SELECT * FROM Reviews 
                 WHERE apartment_id = ApartmentsAndReviews.id AND customer_id = {cid}
             )
-            GROUP BY Apartments.id, Apartments.address, Apartments.city, Apartments.country, Apartments.size
+            GROUP BY ApartmentsAndReviews.id, ApartmentsAndReviews.address, ApartmentsAndReviews.city, ApartmentsAndReviews.country, ApartmentsAndReviews.size
         """).format(cid=sql.Literal(customer_id))
         rows_effected, resultSet = conn.execute(query)
         if(resultSet.isEmpty()): return []

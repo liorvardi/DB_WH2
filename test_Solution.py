@@ -114,5 +114,25 @@ class TestSolution(unittest.TestCase):
         self.assertEqual(len(recommendations), 2)
         # Add more specific assertions if needed based on your application logic
 
+class TestGetApartmentRecommendation(unittest.TestCase):
+    def test_empty_recommendation(self):
+        # Test when there are no apartment recommendations for the customer
+        customer_id = 1
+        recommendations = get_apartment_recommendation(customer_id)
+        self.assertEqual(len(recommendations), 0)
+
+    def test_valid_recommendation(self):
+        # Test when there are valid apartment recommendations for the customer
+        customer_id = 2
+        recommendations = get_apartment_recommendation(customer_id)
+        self.assertEqual(len(recommendations), 2)
+        # Add more specific assertions based on the expected results
+
+    def test_invalid_customer_id(self):
+        # Test when an invalid customer ID is provided
+        customer_id = -1
+        recommendations = get_apartment_recommendation(customer_id)
+        self.assertEqual(len(recommendations), 0)
+
 if __name__ == '__main__':
     unittest.main()

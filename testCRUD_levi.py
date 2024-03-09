@@ -1,3 +1,4 @@
+from datetime import timedelta
 import unittest
 from Solution import *
 from Utility.ReturnValue import ReturnValue
@@ -50,8 +51,15 @@ class TestCRUD(unittest.TestCase):
         self.assertEqual(delete_apartment(0), ReturnValue.BAD_PARAMS)
         # self.assertEqual(delete_apartment(None), ReturnValue.ERROR)
 
+        # Add a reservation before the review date
+        self.assertEqual( customer_made_reservation(1, 1, date.today() - timedelta(days=7), date.today() - timedelta(days=1), 100), ReturnValue.OK)
+        
         # self.assertEqual(get_apartment(1), Apartment.bad_apartment())
         self.assertEqual(add_apartment(Apartment(3, "123 Main St", "Haifa", "lebanon", 80)), ReturnValue.OK)
+        
+
+        # Test reviewing an apartment
+        self.assertEqual(customer_reviewed_apartment(1, 1, date.today(), 5, "Good apartment"), ReturnValue.OK)
 
     def test_customer(self):
         self.assertEqual(add_customer(Customer(1, "Dani")), ReturnValue.OK)
@@ -153,4 +161,4 @@ class TestCRUD(unittest.TestCase):
         self.assertEqual(get_apartment_rating(4), 0.0)
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(failfast=False)
