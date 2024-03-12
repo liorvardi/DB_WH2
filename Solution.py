@@ -514,7 +514,6 @@ def owner_drops_apartment(owner_id: int, apartment_id: int) -> ReturnValue:
     return ReturnValue.OK
 
 
-#TODO: check manually
 def get_apartment_owner(apartment_id: int) -> Owner:
     conn = Connector.DBConnector()
     resultSet = ResultSet()
@@ -534,7 +533,6 @@ def get_apartment_owner(apartment_id: int) -> Owner:
     finally:
         conn.close()
 
-#TODO: check manually
 def get_owner_apartments(owner_id: int) -> List[Apartment]:
     conn = Connector.DBConnector()
     resultSet = ResultSet()
@@ -642,7 +640,6 @@ def reservations_per_owner() -> List[Tuple[str, int]]:
 
 # ---------------------------------- ADVANCED API: ----------------------------------
 
-#todo: validate if Apartments.city should have been OwnersAndApartments.city
 def get_all_location_owners() -> List[Owner]:
     conn = Connector.DBConnector()
     resultSet = ResultSet()
@@ -746,8 +743,9 @@ def get_apartment_recommendation(customer_id: int) -> List[Tuple[Apartment, floa
     try:
         query = sql.SQL("""
             WITH ReviewTuples AS (
-                SELECT ApartmentsAndReviews.customer_id as ThisCustId, ApartmentsAndReviews.rating as ThisCustRating, 
-                       Reviews.customer_id as OtherCustId, Reviews.rating as OtherCustRating,
+                SELECT ApartmentsAndReviews.rating as ThisCustRating, 
+                       Reviews.customer_id as OtherCustId,
+                       Reviews.rating as OtherCustRating,
                        ApartmentsAndReviews.id as AppId
                 FROM ApartmentsAndReviews
                 JOIN Reviews ON ApartmentsAndReviews.id = Reviews.apartment_id
